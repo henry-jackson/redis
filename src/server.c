@@ -990,6 +990,18 @@ struct redisCommand redisCommandTable[] = {
      "write random @stream",
      0,NULL,1,1,1,0,0,0},
 
+    {"miadd",miaddCommand,-5,
+     "write use-memory @miset",
+     0,NULL,1,1,1,0,0},
+
+    {"mirem",miremCommand,-3,
+     "write fast @miset",
+     0,NULL,1,1,1,0,0},
+
+    {"micontains",micontainsCommand,-3,
+     "read-only fast @miset",
+     0,NULL,1,1,1,0,0},
+
     {"post",securityWarningCommand,-1,
      "ok-loading ok-stale read-only",
      0,NULL,0,0,0,0,0,0},
@@ -1299,6 +1311,17 @@ dictType zsetDictType = {
     NULL,                      /* Note: SDS string shared & freed by skiplist */
     NULL                       /* val destructor */
 };
+
+/* Merging interval set type. Nodes are sorted by the minimum value of the
+ * range the node represents */
+dictType misetDictType = {
+    dictEncObjHash,            /* hash function */
+    NULL,                      /* key dup */
+    NULL,                      /* val dup */
+    dictEncObjKeyCompare,      /* key compare */
+    dictRedisObjectDestructor, /* key destructor */
+    NULL                       /* val destructor */
+}
 
 /* Db->dict, keys are sds strings, vals are Redis objects. */
 dictType dbDictType = {

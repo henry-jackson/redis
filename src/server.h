@@ -206,6 +206,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define CMD_CATEGORY_CONNECTION (1ULL<<36)
 #define CMD_CATEGORY_TRANSACTION (1ULL<<37)
 #define CMD_CATEGORY_SCRIPTING (1ULL<<38)
+#define CMD_CATEGORY_MISET (1ULL<<39)
 
 /* AOF states */
 #define AOF_OFF 0             /* AOF is off */
@@ -467,6 +468,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
 #define OBJ_SET 2       /* Set object. */
 #define OBJ_ZSET 3      /* Sorted set object. */
 #define OBJ_HASH 4      /* Hash object. */
+#define OBJ_MISET 5     /* Merging interval set */
 
 /* The "module" object type is a special one that signals that the object
  * is one directly managed by a Redis module. In this case the value points
@@ -609,6 +611,7 @@ typedef struct RedisModuleDigest {
 #define OBJ_ENCODING_EMBSTR 8  /* Embedded sds string encoding */
 #define OBJ_ENCODING_QUICKLIST 9 /* Encoded as linked list of ziplists */
 #define OBJ_ENCODING_STREAM 10 /* Encoded as a radix tree of listpacks */
+#define OBJ_ENCODING_AVLTREE 11 /* Encoded as self-balancing binary search tree */
 
 #define LRU_BITS 24
 #define LRU_CLOCK_MAX ((1<<LRU_BITS)-1) /* Max value of obj->lru */
@@ -923,6 +926,26 @@ typedef struct clientBufferLimitsConfig {
     unsigned long long soft_limit_bytes;
     time_t soft_limit_seconds;
 } clientBufferLimitsConfig;
+
+/* MISETS are specialized avl structures */
+typedef struct avlNode {
+       robj *obj;
+       double scores[2];
+       double subLeftMax, subRightMax;
+       char balance;
+       struct avlNode *left, *right, *parent, *next;
+} avlNode;
+
+typedef struct avl {
+       struct avlNode *root;
+       dict *dict;
+       unsigned long size;
+} avl;
+
+typedef struct iset {
+       avl *avltree;
+       dict *dict;
+} iset;
 
 extern clientBufferLimitsConfig clientBufferLimitsDefaults[CLIENT_TYPE_OBUF_COUNT];
 
@@ -1576,6 +1599,7 @@ extern dictType hashDictType;
 extern dictType replScriptCacheDictType;
 extern dictType keyptrDictType;
 extern dictType modulesDictType;
+extern dictType misetDictType;
 
 /*-----------------------------------------------------------------------------
  * Functions prototypes
@@ -1793,6 +1817,7 @@ robj *createZsetObject(void);
 robj *createZsetZiplistObject(void);
 robj *createStreamObject(void);
 robj *createModuleObject(moduleType *mt, void *value);
+robj *createMIsetObject(void);
 int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg);
 int checkType(client *c, robj *o, int type);
 int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const char *msg);
@@ -2046,6 +2071,18 @@ int setTypeRandomElement(robj *setobj, sds *sdsele, int64_t *llele);
 unsigned long setTypeRandomElements(robj *set, unsigned long count, robj *aux_set);
 unsigned long setTypeSize(const robj *subject);
 void setTypeConvert(robj *subject, int enc);
+
+/* MISET data type */
+avl *avlCreate(void);
+avlNode *avlCreateNode(double lscore, double rscore, robj *obj);
+void avlFreeNode(avlNode *node, int removeList);
+void avlFree(avl *tree);
+int avlNodeCmp(avlNode *a, avlNode *b);
+void avlLeftRotation(avl * tree, avlNode *locNode);
+void avlRightRotation(avl * tree, avlNode *locNode);
+void avlResetBalance(avlNode *locNode);
+int avlInsertNode(avl * tree, avlNode *locNode, avlNode *insertNode);
+avlNode *avlInsert(avl *tree, double lscore, double rscore, robj *obj);
 
 /* Hash data type */
 #define HASH_SET_TAKE_FIELD (1<<0)
@@ -2434,6 +2471,9 @@ void xtrimCommand(client *c);
 void lolwutCommand(client *c);
 void aclCommand(client *c);
 void stralgoCommand(client *c);
+void miaddCommand(redisClient *c);
+void miremCommand(redisClient *c);
+void micontainsCommand(redisClient *c);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

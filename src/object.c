@@ -278,6 +278,17 @@ robj *createModuleObject(moduleType *mt, void *value) {
     return createObject(OBJ_MODULE,mv);
 }
 
+robj *createMIsetObject(void) {
+    avl *a = avlCreate();
+    robj *o = createObject(REDIS_MISET,a);
+    o->encoding = OBJ_ENCODING_AVLTREE;
+    return o;
+}
+
+void freeMIsetObject(robj *o) {
+    avlFree(o->ptr);
+}
+
 void freeStringObject(robj *o) {
     if (o->encoding == OBJ_ENCODING_RAW) {
         sdsfree(o->ptr);
@@ -368,6 +379,7 @@ void decrRefCount(robj *o) {
         case OBJ_HASH: freeHashObject(o); break;
         case OBJ_MODULE: freeModuleObject(o); break;
         case OBJ_STREAM: freeStreamObject(o); break;
+        case REDIS_MISET: freeMIsetObject(o); break;
         default: serverPanic("Unknown object type"); break;
         }
         zfree(o);

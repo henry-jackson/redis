@@ -1095,6 +1095,38 @@ int rewriteSortedSetObject(rio *r, robj *key, robj *o) {
     return 1;
 }
 
+int rewriteMIntervalSetObject(rio *r, robj *key, robj *o) {
+    long long count = 0, items = misetLength(o); // TODO need method
+
+    if (o->encoding == OBJ_ENCODING_AVLTREE) {
+        dictIterator *di = dictGetIterator(((avl *) o->ptr)->dict);
+        dictEntry *de;
+
+        while((de = dictNext(di)) != NULL) {
+            robj *eleobj = dictGetKey(de);
+            double **scores = dictGetVal(de);
+
+            if (count == 0) {
+                int cmd_items = (items > AOF_REWRITE_ITEMS_PER_CMD) ?
+                    AOF_REWRITE_ITEMS_PER_CMD : items;
+
+                if (rioWriteBulkCount(r,'*',2+cmd_items*3) == 0) return 0;
+                if (rioWriteBulkString(r,"MIADD",4) == 0) return 0;
+                if (rioWriteBulkObject(r,key) == 0) return 0;
+            }
+            if (rioWriteBulkDouble(r,(*scores)[0]) == 0) return 0;
+            if (rioWriteBulkDouble(r,(*scores)[1]) == 0) return 0;
+            if (rioWriteBulkObject(r,eleobj) == 0) return 0;
+            if (++count == AOF_REWRITE_ITEMS_PER_CMD) count = 0;
+            items--;
+        }
+        dictReleaseIterator(di);
+    } else {
+        redisPanic("Unknown interval set encoding");
+    }
+    return 1;
+}
+
 /* Write either the key or the value of the currently selected item of a hash.
  * The 'hi' argument passes a valid Redis hash iterator.
  * The 'what' filed specifies if to write a key or a value and can be
@@ -1371,6 +1403,8 @@ int rewriteAppendOnlyFileRio(rio *aof) {
                 if (rewriteStreamObject(aof,&key,o) == 0) goto werr;
             } else if (o->type == OBJ_MODULE) {
                 if (rewriteModuleObject(aof,&key,o) == 0) goto werr;
+            } else if (o->type == REDIS_MISET) {
+                if (rewriteMIntervalSetObject(&aof;,&key;,o) == 0) goto werr;
             } else {
                 serverPanic("Unknown object type");
             }
